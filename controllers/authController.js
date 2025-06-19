@@ -1,8 +1,6 @@
 const db = require('../config/db');
 const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
-
-const SECRET_KEY = process.env.JWT_SECRET || 'drteeth_secret_key';
+const { generateToken } = require('../middleware/authToken');
 
 // REGISTRO DE USUARIO
 exports.register = async (req, res) => {
@@ -16,15 +14,7 @@ exports.register = async (req, res) => {
     numeroDocumento
   } = req.body;
 
-  if (
-    !nombre ||
-    !apellidos ||
-    !correo ||
-    !telefono ||
-    !password ||
-    !tipoDocumento ||
-    !numeroDocumento
-  ) {
+  if (!nombre || !apellidos || !correo || !telefono || !password || !tipoDocumento || !numeroDocumento) {
     return res.status(400).json({ error: 'Todos los campos son requeridos' });
   }
 
@@ -33,37 +23,18 @@ exports.register = async (req, res) => {
 
     const query = `
       INSERT INTO usuario (
-        nombre,
-        apellidos,
-        correo,
-        telefono,
-        password,
-        tipoDocumento,
-        numeroDocumento
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?)`;
+        nombre, apellidos, correo, telefono, password, tipoDocumento, numeroDocumento
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`;
 
     db.query(
       query,
-      [
-        nombre,
-        apellidos,
-        correo,
-        telefono,
-        hashedPassword,
-        tipoDocumento,
-        numeroDocumento
-      ],
+      [nombre, apellidos, correo, telefono, hashedPassword, tipoDocumento, numeroDocumento],
       (err, result) => {
         if (err) {
           console.error('❌ Error al registrar usuario:', err);
-          return res
-            .status(500)
-            .json({ error: 'Error al registrar usuario' });
+          return res.status(500).json({ error: 'Error al registrar usuario' });
         }
-        res
-          .status(201)
-          .json({ message: 'Usuario registrado exitosamente' });
+        res.status(201).json({ message: 'Usuario registrado exitosamente' });
       }
     );
   } catch (err) {
@@ -93,21 +64,14 @@ exports.login = (req, res) => {
     }
 
     const user = results[0];
-
     const passwordMatch = await bcrypt.compare(password, user.password);
 
     if (!passwordMatch) {
       return res.status(401).json({ error: 'Contraseña incorrecta' });
     }
 
-    // ✅ Generar token válido por 7 días
-    const token = jwt.sign(
-      { email: user.correo },
-      SECRET_KEY,
-      { expiresIn: '7d' }
-    );
-
-    console.log('🪪 Token generado:', token);
+    const token = generateToken({ email: user.correo });
+    console.log('🔐 Token generado:', token);
 
     res.status(200).json({
       message: 'Inicio de sesión exitoso',
@@ -121,7 +85,7 @@ exports.login = (req, res) => {
   });
 };
 
-// OBTENER IMÁGENES DEL CARRUSEL
+// CARRUSEL
 exports.getCarruselImagenes = (req, res) => {
   const query = 'SELECT * FROM carrusel_imagenes';
 

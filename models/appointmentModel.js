@@ -1,24 +1,19 @@
 const db = require('../config/db');
 
 const Appointment = {
-  getAll: (callback) => {
+  getAllByUserId: (userId, callback) => {
     const query = `
       SELECT 
-        citas.*, 
-        perfil_odontologo.nombre AS nombre_odontologo,
-        perfil_odontologo.especialidad AS especialidad_odontologo,
-        perfil_odontologo.direccion_consultorio
-      FROM citas
-      JOIN perfil_odontologo 
-        ON citas.Perfil_Odontologo_idPerfil_Odontologo = perfil_odontologo.idPerfil_Odontologo
+        c.idCita, c.titulo, c.estado, c.fecha_hora,
+        o.nombre AS nombre_odontologo,
+        o.especialidad AS especialidad_odontologo,
+        o.direccion_consultorio
+      FROM citas c
+      JOIN perfil_odontologo o ON c.Perfil_Odontologo_idPerfil_Odontologo = o.idPerfil_Odontologo
+      WHERE c.Usuario_idUsuario = ?
     `;
-    db.query(query, (err, results) => {
-      if (err) {
-        return callback(err, null);
-      }
-      callback(null, results);
-    });
-  }
+    db.query(query, [userId], callback);
+  },
 };
 
 module.exports = Appointment;

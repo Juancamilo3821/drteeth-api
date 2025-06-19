@@ -2,39 +2,40 @@ const db = require('../config/db');
 const Appointment = require('../models/appointmentModel');
 
 exports.obtenerCitas = (req, res) => {
-  Appointment.getAll((err, results) => {
-    if (err) {
-      console.error('Error al obtener citas:', err);
-      return res.status(500).json({ error: 'Error al obtener las citas' });
+  const userEmail = req.user?.email;
+
+  if (!userEmail) {
+    return res.status(401).json({ error: 'Token inválido o sin correo' });
+  }
+
+  const queryUsuario = 'SELECT idUsuario FROM usuario WHERE correo = ?';
+  db.query(queryUsuario, [userEmail], (err, usuarioResult) => {
+    if (err || usuarioResult.length === 0) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
     }
 
-    // Formatear citas: convertir fechas y organizar la info del doctor
-    const citasFormateadas = results.map(cita => {
-      let fechaHoraFormateada = null;
+    const userId = usuarioResult[0].idUsuario;
 
-      if (cita.fecha_hora) {
-        const fecha = new Date(cita.fecha_hora);
-        if (!isNaN(fecha)) {
-          fechaHoraFormateada = fecha.toISOString(); // ISO 8601 format
-        } else {
-          console.warn('Fecha inválida detectada:', cita.fecha_hora);
-        }
+    Appointment.getAllByUserId(userId, (err, citasResult) => {
+      if (err) {
+        console.error('Error al obtener citas:', err);
+        return res.status(500).json({ error: 'Error al obtener las citas' });
       }
 
-      return {
+      const citasFormateadas = citasResult.map(cita => ({
         id: cita.idCita,
         titulo: cita.titulo,
         estado: cita.estado,
-        fecha_hora: fechaHoraFormateada,
+        fecha_hora: new Date(cita.fecha_hora).toISOString(),
         doctor: {
           nombre: cita.nombre_odontologo,
           especialidad: cita.especialidad_odontologo,
           direccion_consultorio: cita.direccion_consultorio
         }
-      };
-    });
+      }));
 
-    console.log('Citas enviadas al cliente:', citasFormateadas);
-    res.json(citasFormateadas);
+      console.log('✅ Citas del usuario:', citasFormateadas);
+      res.json(citasFormateadas);
+    });
   });
 };
