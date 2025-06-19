@@ -4,6 +4,8 @@ const appointmentRoutes = require('./routes/appointmentRoutes');
 const disabilitieRoutes = require('./routes/disabilitieRoutes');
 const treatmentRoutes = require('./routes/treatmentRoutes');
 const logger = require('./middleware/logger');
+const paymentRoutes = require('./routes/paymentRoutes');
+
 const db = require('./config/db');
 require('dotenv').config();
 
@@ -18,6 +20,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api', appointmentRoutes); 
 app.use('/api/disabilitie', disabilitieRoutes);
 app.use('/api/treatment', treatmentRoutes);
+app.use('/api/pagos', paymentRoutes);
 
 
 // Conexión a la base de datos

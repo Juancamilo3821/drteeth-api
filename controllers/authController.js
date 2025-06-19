@@ -1,28 +1,71 @@
 const db = require('../config/db');
 const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+
+const SECRET_KEY = process.env.JWT_SECRET || 'drteeth_secret_key';
 
 // REGISTRO DE USUARIO
 exports.register = async (req, res) => {
-  const { nombre, apellidos, correo, telefono, password } = req.body;
+  const {
+    nombre,
+    apellidos,
+    correo,
+    telefono,
+    password,
+    tipoDocumento,
+    numeroDocumento
+  } = req.body;
 
-  if (!nombre || !apellidos || !correo || !telefono || !password) {
+  if (
+    !nombre ||
+    !apellidos ||
+    !correo ||
+    !telefono ||
+    !password ||
+    !tipoDocumento ||
+    !numeroDocumento
+  ) {
     return res.status(400).json({ error: 'Todos los campos son requeridos' });
   }
 
   try {
-    const hashedPassword = await bcrypt.hash(password, 10); 
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     const query = `
-      INSERT INTO usuario (nombre, apellidos, correo, telefono, password) 
-      VALUES (?, ?, ?, ?, ?)`;
+      INSERT INTO usuario (
+        nombre,
+        apellidos,
+        correo,
+        telefono,
+        password,
+        tipoDocumento,
+        numeroDocumento
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?)`;
 
-    db.query(query, [nombre, apellidos, correo, telefono, hashedPassword], (err, result) => {
-      if (err) {
-        console.error('❌ Error al registrar usuario:', err);
-        return res.status(500).json({ error: 'Error al registrar usuario' });
+    db.query(
+      query,
+      [
+        nombre,
+        apellidos,
+        correo,
+        telefono,
+        hashedPassword,
+        tipoDocumento,
+        numeroDocumento
+      ],
+      (err, result) => {
+        if (err) {
+          console.error('❌ Error al registrar usuario:', err);
+          return res
+            .status(500)
+            .json({ error: 'Error al registrar usuario' });
+        }
+        res
+          .status(201)
+          .json({ message: 'Usuario registrado exitosamente' });
       }
-      res.status(201).json({ message: 'Usuario registrado exitosamente' });
-    });
+    );
   } catch (err) {
     console.error('❌ Error interno:', err);
     res.status(500).json({ error: 'Error al procesar la solicitud' });
@@ -57,8 +100,18 @@ exports.login = (req, res) => {
       return res.status(401).json({ error: 'Contraseña incorrecta' });
     }
 
+    // ✅ Generar token válido por 7 días
+    const token = jwt.sign(
+      { email: user.correo },
+      SECRET_KEY,
+      { expiresIn: '7d' }
+    );
+
+    console.log('🪪 Token generado:', token);
+
     res.status(200).json({
       message: 'Inicio de sesión exitoso',
+      token,
       user: {
         id: user.idUsuario,
         nombre: user.nombre,
