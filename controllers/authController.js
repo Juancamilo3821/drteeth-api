@@ -1,6 +1,7 @@
 const db = require('../config/db');
 const bcrypt = require('bcrypt');
-const { generateToken } = require('../middleware/authToken');
+const { generateToken, verifyToken } = require('../middleware/authToken');
+const User = require('../models/userModel');
 
 // REGISTRO DE USUARIO
 exports.register = async (req, res) => {
@@ -85,16 +86,17 @@ exports.login = (req, res) => {
   });
 };
 
-// CARRUSEL
-exports.getCarruselImagenes = (req, res) => {
-  const query = 'SELECT * FROM carrusel_imagenes';
-
-  db.query(query, (err, results) => {
+// GET USER PROFILE (by token)
+exports.getProfile = (req, res) => {
+  const email = req.user.email; // <- viene del verifyToken
+  User.getProfileByEmail(email, (err, user) => {
     if (err) {
-      console.error('❌ Error al obtener imágenes del carrusel:', err);
-      return res.status(500).json({ error: 'Error al obtener imágenes' });
+      console.error('❌ Error al obtener perfil:', err);
+      return res.status(500).json({ error: 'Error al obtener perfil del usuario' });
     }
-
-    res.status(200).json({ imagenes: results });
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    res.status(200).json(user);
   });
 };

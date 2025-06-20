@@ -1,7 +1,7 @@
 const db = require('../config/db');
 
 const Disabilitie = {
-  getAll: (callback) => {
+  getAllByEmail: (email, callback) => {
     const query = `
       SELECT 
         incapacidad.*, 
@@ -11,12 +11,13 @@ const Disabilitie = {
       FROM incapacidad
       JOIN perfil_odontologo 
         ON incapacidad.Perfil_Odontologo_idPerfil_Odontologo = perfil_odontologo.idPerfil_Odontologo
+      JOIN usuario 
+        ON usuario.idUsuario = incapacidad.Usuario_idUsuario
+      WHERE usuario.correo = ?
     `;
 
-    db.query(query, (err, results) => {
-      if (err) {
-        return callback(err, null);
-      }
+    db.query(query, [email], (err, results) => {
+      if (err) return callback(err, null);
       callback(null, results);
     });
   }

@@ -1,7 +1,9 @@
 const Treatment = require('../models/treatmentModel');
 
 exports.obtenerTratamientos = (req, res) => {
-  Treatment.getAll((err, results) => {
+  const email = req.user.email;
+
+  Treatment.getByUserEmail(email, (err, results) => {
     if (err) {
       console.error('Error al obtener tratamientos:', err);
       return res.status(500).json({ error: 'Error al obtener los tratamientos' });
@@ -26,6 +28,6 @@ exports.obtenerTratamientos = (req, res) => {
       } : null
     }));
 
-    res.json(tratamientosFormateados);
+    res.status(200).json(tratamientosFormateados);
   });
 };
