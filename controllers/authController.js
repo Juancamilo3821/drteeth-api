@@ -88,7 +88,9 @@ exports.login = (req, res) => {
 
 // GET USER PROFILE (by token)
 exports.getProfile = (req, res) => {
-  const email = req.user.email; // <- viene del verifyToken
+  const email = req.user.email;
+  console.log('📨 Email desde el token:', email);
+
   User.getProfileByEmail(email, (err, user) => {
     if (err) {
       console.error('❌ Error al obtener perfil:', err);
@@ -97,6 +99,62 @@ exports.getProfile = (req, res) => {
     if (!user) {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
+
+    console.log('📦 Datos del usuario encontrados:', user);
     res.status(200).json(user);
   });
+};
+
+// EDITAR INFORMACIÓN DEL USUARIO
+exports.updateProfile = async (req, res) => {
+  const oldEmail = req.user.email;
+  const { telefono, correo, avatar, password } = req.body;
+
+  if (!telefono || !correo || avatar === undefined) {
+    return res.status(400).json({ error: 'Faltan campos requeridos (telefono, correo, avatar)' });
+  }
+
+  try {
+    let query, params;
+
+    if (password) {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      query = `
+        UPDATE usuario
+        SET telefono = ?, correo = ?, avatar = ?, password = ?
+        WHERE correo = ?
+      `;
+      params = [telefono, correo, avatar, hashedPassword, oldEmail];
+    } else {
+      query = `
+        UPDATE usuario
+        SET telefono = ?, correo = ?, avatar = ?
+        WHERE correo = ?
+      `;
+      params = [telefono, correo, avatar, oldEmail];
+    }
+
+    db.query(query, params, (err, result) => {
+      if (err) {
+        console.error('❌ Error al actualizar usuario:', err);
+        return res.status(500).json({ error: 'Error al actualizar perfil' });
+      }
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ error: 'Usuario no encontrado para actualizar' });
+      }
+
+      // Generar nuevo token si cambia el correo
+      const newToken = generateToken({ email: correo });
+      console.log('🔄 Nuevo token generado:', newToken);
+
+      res.status(200).json({
+        message: 'Perfil actualizado exitosamente',
+        token: newToken
+      });
+    });
+  } catch (error) {
+    console.error('❌ Error en updateProfile:', error);
+    res.status(500).json({ error: 'Error al procesar solicitud' });
+  }
 };
