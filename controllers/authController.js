@@ -22,27 +22,65 @@ exports.register = async (req, res) => {
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const query = `
-      INSERT INTO usuario (
-        nombre, apellidos, correo, telefono, password, tipoDocumento, numeroDocumento
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)`;
-
-    db.query(
-      query,
-      [nombre, apellidos, correo, telefono, hashedPassword, tipoDocumento, numeroDocumento],
-      (err, result) => {
-        if (err) {
-          console.error('❌ Error al registrar usuario:', err);
-          return res.status(500).json({ error: 'Error al registrar usuario' });
-        }
-        res.status(201).json({ message: 'Usuario registrado exitosamente' });
+    // 1. Buscar si ya existe usuario con esa cédula
+    const checkQuery = 'SELECT * FROM usuario WHERE numeroDocumento = ?';
+    db.query(checkQuery, [numeroDocumento], (checkErr, result) => {
+      if (checkErr) {
+        console.error('❌ Error al verificar usuario por cédula:', checkErr);
+        return res.status(500).json({ error: 'Error al verificar usuario' });
       }
-    );
+
+      if (result.length > 0) {
+        // 2. Ya existe: hacer UPDATE
+        const updateQuery = `
+          UPDATE usuario SET
+            nombre = ?, apellidos = ?, correo = ?, telefono = ?,
+            password = ?, tipoDocumento = ?
+          WHERE numeroDocumento = ?
+        `;
+
+        db.query(
+          updateQuery,
+          [nombre, apellidos, correo, telefono, hashedPassword, tipoDocumento, numeroDocumento],
+          (err, updateResult) => {
+            if (err) {
+              console.error('❌ Error al actualizar usuario:', err);
+              return res.status(500).json({ error: 'Error al actualizar usuario' });
+            }
+
+            return res.status(200).json({ message: 'Usuario actualizado exitosamente' });
+          }
+        );
+
+      } else {
+        // 3. No existe: hacer INSERT
+        const insertQuery = `
+          INSERT INTO usuario (
+            nombre, apellidos, correo, telefono, password, tipoDocumento, numeroDocumento
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `;
+
+        db.query(
+          insertQuery,
+          [nombre, apellidos, correo, telefono, hashedPassword, tipoDocumento, numeroDocumento],
+          (err, insertResult) => {
+            if (err) {
+              console.error('❌ Error al registrar usuario:', err);
+              return res.status(500).json({ error: 'Error al registrar usuario' });
+            }
+
+            return res.status(201).json({ message: 'Usuario registrado exitosamente' });
+          }
+        );
+      }
+    });
+
   } catch (err) {
     console.error('❌ Error interno:', err);
     res.status(500).json({ error: 'Error al procesar la solicitud' });
   }
 };
+
 
 // LOGIN DE USUARIO
 exports.login = (req, res) => {

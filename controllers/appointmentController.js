@@ -1,6 +1,14 @@
 const db = require('../config/db');
 const Appointment = require('../models/appointmentModel');
 
+// 👉 Función para formatear fecha a local (sin zona UTC)
+function formatFechaHoraLocal(fecha) {
+  if (!fecha) return null;
+  const tzOffset = fecha.getTimezoneOffset() * 60000; // minutos → milisegundos
+  const localDate = new Date(fecha.getTime() - tzOffset);
+  return localDate.toISOString().slice(0, 19); // "YYYY-MM-DDTHH:mm:ss"
+}
+
 exports.obtenerCitas = (req, res) => {
   const userEmail = req.user?.email;
 
@@ -18,7 +26,7 @@ exports.obtenerCitas = (req, res) => {
 
     Appointment.getAllByUserId(userId, (err, citasResult) => {
       if (err) {
-        console.error('Error al obtener citas:', err);
+        console.error('❌ Error al obtener citas:', err);
         return res.status(500).json({ error: 'Error al obtener las citas' });
       }
 
@@ -26,7 +34,7 @@ exports.obtenerCitas = (req, res) => {
         id: cita.idCita,
         titulo: cita.titulo,
         estado: cita.estado,
-        fecha_hora: new Date(cita.fecha_hora).toISOString(),
+        fecha_hora: formatFechaHoraLocal(cita.fecha_hora),
         doctor: {
           nombre: cita.nombre_odontologo,
           especialidad: cita.especialidad_odontologo,
