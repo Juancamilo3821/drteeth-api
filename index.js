@@ -5,6 +5,8 @@ const disabilitieRoutes = require('./routes/disabilitieRoutes');
 const treatmentRoutes = require('./routes/treatmentRoutes');
 const logger = require('./middleware/logger');
 
+require('./middleware/cronNotifications');
+
 const db = require('./config/db');
 require('dotenv').config();
 

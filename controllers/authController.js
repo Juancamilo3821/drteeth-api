@@ -84,7 +84,7 @@ exports.register = async (req, res) => {
 
 // LOGIN DE USUARIO
 exports.login = (req, res) => {
-  const { correo, password } = req.body;
+  const { correo, password, fcmToken } = req.body;
 
   if (!correo || !password) {
     return res.status(400).json({ error: 'Correo y contraseña requeridos' });
@@ -109,6 +109,19 @@ exports.login = (req, res) => {
       return res.status(401).json({ error: 'Contraseña incorrecta' });
     }
 
+    // Guardar fcm_token si fue enviado
+    if (fcmToken) {
+      const updateTokenQuery = 'UPDATE usuario SET fcm_token = ? WHERE correo = ?';
+      db.query(updateTokenQuery, [fcmToken, correo], (tokenErr) => {
+        if (tokenErr) {
+          console.error('❌ Error al guardar el FCM token:', tokenErr);
+          // No detenemos el login si esto falla, solo lo reportamos
+        } else {
+          console.log('✅ FCM token actualizado en la base de datos');
+        }
+      });
+    }
+
     const token = generateToken({ email: user.correo });
     console.log('🔐 Token generado:', token);
 
@@ -123,6 +136,7 @@ exports.login = (req, res) => {
     });
   });
 };
+
 
 // GET USER PROFILE (by token)
 exports.getProfile = (req, res) => {

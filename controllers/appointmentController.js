@@ -1,12 +1,11 @@
 const db = require('../config/db');
 const Appointment = require('../models/appointmentModel');
 
-// 👉 Función para formatear fecha a local (sin zona UTC)
 function formatFechaHoraLocal(fecha) {
   if (!fecha) return null;
-  const tzOffset = fecha.getTimezoneOffset() * 60000; // minutos → milisegundos
+  const tzOffset = fecha.getTimezoneOffset() * 60000;
   const localDate = new Date(fecha.getTime() - tzOffset);
-  return localDate.toISOString().slice(0, 19); // "YYYY-MM-DDTHH:mm:ss"
+  return localDate.toISOString().slice(0, 19);
 }
 
 exports.obtenerCitas = (req, res) => {
@@ -35,6 +34,8 @@ exports.obtenerCitas = (req, res) => {
         titulo: cita.titulo,
         estado: cita.estado,
         fecha_hora: formatFechaHoraLocal(cita.fecha_hora),
+        recordatorio_activado: !!cita.recordatorio_activado,
+        recordatorio_activado_at: cita.recordatorio_activado_at ? formatFechaHoraLocal(cita.recordatorio_activado_at) : null,
         doctor: {
           nombre: cita.nombre_odontologo,
           especialidad: cita.especialidad_odontologo,
@@ -45,5 +46,23 @@ exports.obtenerCitas = (req, res) => {
       console.log('✅ Citas del usuario:', citasFormateadas);
       res.json(citasFormateadas);
     });
+  });
+};
+
+exports.actualizarRecordatorio = (req, res) => {
+  const idCita = req.params.id;
+  const { activado } = req.body;
+
+  if (typeof activado !== 'boolean') {
+    return res.status(400).json({ error: 'El valor de activado debe ser booleano' });
+  }
+
+  Appointment.actualizarRecordatorio(idCita, activado, (err, result) => {
+    if (err) {
+      console.error('❌ Error al actualizar recordatorio:', err);
+      return res.status(500).json({ error: 'Error al actualizar el recordatorio' });
+    }
+
+    res.json({ success: true, mensaje: 'Recordatorio actualizado correctamente' });
   });
 };
