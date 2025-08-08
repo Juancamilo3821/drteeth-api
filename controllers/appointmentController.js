@@ -25,7 +25,7 @@ exports.obtenerCitas = (req, res) => {
 
     Appointment.getAllByUserId(userId, (err, citasResult) => {
       if (err) {
-        console.error('❌ Error al obtener citas:', err);
+        console.error('Error al obtener citas:', err);
         return res.status(500).json({ error: 'Error al obtener las citas' });
       }
 
@@ -43,7 +43,7 @@ exports.obtenerCitas = (req, res) => {
         }
       }));
 
-      console.log('✅ Citas del usuario:', citasFormateadas);
+      console.log('Citas del usuario:', citasFormateadas);
       res.json(citasFormateadas);
     });
   });
@@ -59,7 +59,7 @@ exports.actualizarRecordatorio = (req, res) => {
 
   Appointment.actualizarRecordatorio(idCita, activado, (err, result) => {
     if (err) {
-      console.error('❌ Error al actualizar recordatorio:', err);
+      console.error('Error al actualizar recordatorio:', err);
       return res.status(500).json({ error: 'Error al actualizar el recordatorio' });
     }
 

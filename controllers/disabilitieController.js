@@ -29,7 +29,7 @@ exports.obtenerIncapacidades = (req, res) => {
       }
     }));
 
-    console.log('📦 Incapacidades formateadas que se envían al cliente:', datosFormateados);
+    console.log('Incapacidades formateadas que se envían al cliente:', datosFormateados);
     res.status(200).json(datosFormateados);
   });
 };

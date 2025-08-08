@@ -26,7 +26,7 @@ exports.register = async (req, res) => {
     const checkQuery = 'SELECT * FROM usuario WHERE numeroDocumento = ?';
     db.query(checkQuery, [numeroDocumento], (checkErr, result) => {
       if (checkErr) {
-        console.error('❌ Error al verificar usuario por cédula:', checkErr);
+        console.error('Error al verificar usuario por cédula:', checkErr);
         return res.status(500).json({ error: 'Error al verificar usuario' });
       }
 
@@ -44,7 +44,7 @@ exports.register = async (req, res) => {
           [nombre, apellidos, correo, telefono, hashedPassword, tipoDocumento, numeroDocumento],
           (err, updateResult) => {
             if (err) {
-              console.error('❌ Error al actualizar usuario:', err);
+              console.error('Error al actualizar usuario:', err);
               return res.status(500).json({ error: 'Error al actualizar usuario' });
             }
 
@@ -65,7 +65,7 @@ exports.register = async (req, res) => {
           [nombre, apellidos, correo, telefono, hashedPassword, tipoDocumento, numeroDocumento],
           (err, insertResult) => {
             if (err) {
-              console.error('❌ Error al registrar usuario:', err);
+              console.error('Error al registrar usuario:', err);
               return res.status(500).json({ error: 'Error al registrar usuario' });
             }
 
@@ -76,7 +76,7 @@ exports.register = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('❌ Error interno:', err);
+    console.error('Error interno:', err);
     res.status(500).json({ error: 'Error al procesar la solicitud' });
   }
 };
@@ -94,7 +94,7 @@ exports.login = (req, res) => {
 
   db.query(query, [correo], async (err, results) => {
     if (err) {
-      console.error('❌ Error en la base de datos:', err);
+      console.error('Error en la base de datos:', err);
       return res.status(500).json({ error: 'Error en la base de datos' });
     }
 
@@ -117,13 +117,13 @@ exports.login = (req, res) => {
           console.error('❌ Error al guardar el FCM token:', tokenErr);
           // No detenemos el login si esto falla, solo lo reportamos
         } else {
-          console.log('✅ FCM token actualizado en la base de datos');
+          console.log('FCM token actualizado en la base de datos');
         }
       });
     }
 
     const token = generateToken({ email: user.correo });
-    console.log('🔐 Token generado:', token);
+    console.log('Token generado:', token);
 
     res.status(200).json({
       message: 'Inicio de sesión exitoso',
@@ -141,7 +141,7 @@ exports.login = (req, res) => {
 // GET USER PROFILE (by token)
 exports.getProfile = (req, res) => {
   const email = req.user.email;
-  console.log('📨 Email desde el token:', email);
+  console.log('Email desde el token:', email);
 
   User.getProfileByEmail(email, (err, user) => {
     if (err) {
@@ -152,7 +152,7 @@ exports.getProfile = (req, res) => {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
 
-    console.log('📦 Datos del usuario encontrados:', user);
+    console.log('Datos del usuario encontrados:', user);
     res.status(200).json(user);
   });
 };
@@ -188,7 +188,7 @@ exports.updateProfile = async (req, res) => {
 
     db.query(query, params, (err, result) => {
       if (err) {
-        console.error('❌ Error al actualizar usuario:', err);
+        console.error('Error al actualizar usuario:', err);
         return res.status(500).json({ error: 'Error al actualizar perfil' });
       }
 
@@ -198,7 +198,7 @@ exports.updateProfile = async (req, res) => {
 
       // Generar nuevo token si cambia el correo
       const newToken = generateToken({ email: correo });
-      console.log('🔄 Nuevo token generado:', newToken);
+      console.log('Nuevo token generado:', newToken);
 
       res.status(200).json({
         message: 'Perfil actualizado exitosamente',
@@ -206,7 +206,7 @@ exports.updateProfile = async (req, res) => {
       });
     });
   } catch (error) {
-    console.error('❌ Error en updateProfile:', error);
+    console.error('Error en updateProfile:', error);
     res.status(500).json({ error: 'Error al procesar solicitud' });
   }
 };

@@ -8,7 +8,7 @@ exports.sendNotificationToUser = (req, res) => {
 
   db.query(query, [numeroDocumento], (err, results) => {
     if (err) {
-      console.error('❌ Error al consultar el FCM token:', err);
+      console.error('Error al consultar el FCM token:', err);
       return res.status(500).json({ error: 'Error de base de datos' });
     }
 
@@ -38,11 +38,11 @@ exports.sendNotificationToUser = (req, res) => {
 
     admin.messaging().send(message)
       .then(response => {
-        console.log('✅ Notificación enviada:', response);
+        console.log('Notificación enviada:', response);
         res.status(200).json({ message: 'Notificación enviada con éxito' });
       })
       .catch(error => {
-        console.error('❌ Error al enviar notificación:', error);
+        console.error('Error al enviar notificación:', error);
         res.status(500).json({ error: 'Error al enviar notificación' });
       });
   });

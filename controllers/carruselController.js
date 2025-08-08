@@ -7,7 +7,7 @@ exports.getCarruselImagenes = (req, res) => {
 
   db.query(query, (err, results) => {
     if (err) {
-      console.error('❌ Error al obtener imágenes del carrusel:', err);
+      console.error('Error al obtener imágenes del carrusel:', err);
       return res.status(500).json({ error: 'Error al obtener imágenes' });
     }
 
