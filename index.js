@@ -4,6 +4,9 @@ const appointmentRoutes = require('./routes/appointmentRoutes');
 const disabilitieRoutes = require('./routes/disabilitieRoutes');
 const treatmentRoutes = require('./routes/treatmentRoutes');
 const logger = require('./middleware/logger');
+const pingRoutes = require('./routes/pingRoutes');
+app.use('/ping', pingRoutes);
+
 
 require('./middleware/cronNotifications');
 
