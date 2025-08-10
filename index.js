@@ -5,7 +5,6 @@ const disabilitieRoutes = require('./routes/disabilitieRoutes');
 const treatmentRoutes = require('./routes/treatmentRoutes');
 const logger = require('./middleware/logger');
 const pingRoutes = require('./routes/pingRoutes');
-app.use('/ping', pingRoutes);
 
 
 require('./middleware/cronNotifications');
@@ -24,6 +23,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api', appointmentRoutes); 
 app.use('/api/disabilitie', disabilitieRoutes);
 app.use('/api/treatment', treatmentRoutes);
+app.use('/ping', pingRoutes);
 
 
 // Conexión a la base de datos
