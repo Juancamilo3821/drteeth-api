@@ -1,4 +1,5 @@
-const db = require('../config/db');
+const { pool } = require('../config/db');
+const db = pool; 
 const bcrypt = require('bcrypt');
 
 // OBTENER IMÁGENES DEL CARRUSEL

@@ -1,5 +1,6 @@
 const admin = require('../config/firebaseAdmin');
-const db = require('../config/db');
+const { pool } = require('../config/db');
+const db = pool; 
 
 exports.sendNotificationToUser = (req, res) => {
   const { numeroDocumento, title, body } = req.body;

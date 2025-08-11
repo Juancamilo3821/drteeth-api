@@ -1,3 +1,5 @@
+const { pool } = require('../config/db');
+const db = pool; 
 const Disabilitie = require('../models/disabilitieModel');
 
 exports.obtenerIncapacidades = (req, res) => {

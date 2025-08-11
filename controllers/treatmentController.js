@@ -1,4 +1,6 @@
 const Treatment = require('../models/treatmentModel');
+const { pool } = require('../config/db');
+const db = pool; 
 
 exports.obtenerTratamientos = (req, res) => {
   const email = req.user.email;
