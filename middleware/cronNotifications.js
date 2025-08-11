@@ -1,16 +1,19 @@
 // cronNotifications.js
 const cron = require('node-cron');
 const admin = require('../config/firebaseAdmin');
-const { pool } = require('../config/db'); // usamos el pool (injected o el default)
+const { pool } = require('../config/db');
 
 /**
  * Inicia el cron que revisa citas y envía notificaciones.
- * Si nos inyectan un pool externo lo usamos; si no, usamos el de config.
+ * Si nos inyectan un pool, lo usamos; si no, usamos el de config.
+ *
+ * IMPORTANTE: aquí asumimos que c.fecha_hora está guardada en hora local Bogotá.
+ * Convertimos a UTC SOLO para comparar y decidir la ventana.
  */
 function startCron(injectedPool) {
   const usePool = injectedPool || pool;
 
-  // Corre cada minuto en UTC (evita líos de zona horaria del contenedor)
+  // Corre cada minuto con base UTC (evita líos de TZ del contenedor)
   cron.schedule(
     '* * * * *',
     async () => {
@@ -19,21 +22,37 @@ function startCron(injectedPool) {
           c.idCita,
           u.numeroDocumento,
           u.fcm_token,
-          c.fecha_hora,                           -- almacenada en UTC
+
+          -- Fecha/hora guardada (asumimos America/Bogota)
+          c.fecha_hora AS fecha_local_bo,
+
+          -- Misma cita convertida a UTC para comparar contra UTC_TIMESTAMP()
+          CONVERT_TZ(c.fecha_hora, 'America/Bogota', '+00:00') AS fecha_utc,
+
           c.recordatorio_activado,
           c.recordatorio_activado_at,
           c.notificado_3h,
           c.notificado_24h,
 
-          -- diferencia en minutos entre ahora UTC y la cita
-          TIMESTAMPDIFF(MINUTE, UTC_TIMESTAMP(), c.fecha_hora) AS diff_min,
+          -- diferencia en minutos entre AHORA (UTC) y la cita (ya en UTC)
+          TIMESTAMPDIFF(
+            MINUTE,
+            UTC_TIMESTAMP(),
+            CONVERT_TZ(c.fecha_hora, 'America/Bogota', '+00:00')
+          ) AS diff_min,
 
-          -- decide qué notificación toca enviar
+          -- decide qué notificación toca enviar (ventanas un poco amplias)
           CASE
-            WHEN TIMESTAMPDIFF(MINUTE, UTC_TIMESTAMP(), c.fecha_hora)
-                 BETWEEN 174 AND 186 AND c.notificado_3h = 0 THEN '3h'
-            WHEN TIMESTAMPDIFF(MINUTE, UTC_TIMESTAMP(), c.fecha_hora)
-                 BETWEEN 1434 AND 1446 AND c.notificado_24h = 0 THEN '24h'
+            WHEN TIMESTAMPDIFF(
+                   MINUTE, UTC_TIMESTAMP(),
+                   CONVERT_TZ(c.fecha_hora, 'America/Bogota', '+00:00')
+                 ) BETWEEN 170 AND 190
+                 AND c.notificado_3h = 0 THEN '3h'
+            WHEN TIMESTAMPDIFF(
+                   MINUTE, UTC_TIMESTAMP(),
+                   CONVERT_TZ(c.fecha_hora, 'America/Bogota', '+00:00')
+                 ) BETWEEN 1410 AND 1470
+                 AND c.notificado_24h = 0 THEN '24h'
             ELSE NULL
           END AS to_send,
 
@@ -44,11 +63,8 @@ function startCron(injectedPool) {
             UTC_TIMESTAMP()
           ) AS mins_since_activation,
 
-          -- hora local Bogotá para mostrar en el texto
-          DATE_FORMAT(
-            CONVERT_TZ(c.fecha_hora, '+00:00', 'America/Bogota'),
-            '%H:%i'
-          ) AS hora_local_bo
+          -- hora para mostrar en el cuerpo (local Bogotá)
+          DATE_FORMAT(c.fecha_hora, '%H:%i') AS hora_local_bo
         FROM citas c
         JOIN usuario u ON u.idUsuario = c.Usuario_idUsuario
         WHERE
@@ -69,8 +85,10 @@ function startCron(injectedPool) {
             let cuerpo = '';
             let colUpdate = null;
 
-            // Log de diagnóstico
-            // console.log(`[cron] cita=${r.idCita} diff=${r.diff_min}min to=${r.to_send} minsAct=${r.mins_since_activation}`);
+            // Diagnóstico fino (déjalo activo mientras pruebes)
+            console.log(
+              `[cron] D c=${r.idCita} diff=${r.diff_min} to=${r.to_send} act=${r.mins_since_activation} local=${r.fecha_local_bo}`
+            );
 
             if (r.to_send === '3h') {
               titulo = 'Recordatorio de cita';
@@ -100,7 +118,9 @@ function startCron(injectedPool) {
               apns: { payload: { aps: { sound: 'default' } } }
             });
 
-            console.log(`[cron] push a ${r.numeroDocumento} (cita=${r.idCita}) → ${titulo}`);
+            console.log(
+              `[cron] ✅ push a ${r.numeroDocumento} (cita=${r.idCita}) → ${titulo}`
+            );
 
             if (colUpdate) {
               usePool.query(
@@ -108,19 +128,24 @@ function startCron(injectedPool) {
                 [r.idCita],
                 (uerr) => {
                   if (uerr) {
-                    console.error(`[cron] ❌ update ${colUpdate} cita=${r.idCita}:`, uerr);
+                    console.error(
+                      `[cron] ❌ update ${colUpdate} cita=${r.idCita}:`,
+                      uerr
+                    );
                   } else {
-                    console.log(`[cron] marcado ${colUpdate}=1 cita=${r.idCita}`);
+                    console.log(
+                      `[cron] marcado ${colUpdate}=1 cita=${r.idCita}`
+                    );
                   }
                 }
               );
             }
           } catch (e) {
-            console.error(`[cron] FCM err cita=${r.idCita}:`, e?.errorInfo || e);
+            console.error(
+              `[cron] FCM err cita=${r.idCita}:`,
+              e?.errorInfo || e
+            );
           }
-          // dentro del for del cron:
-          console.log(`[cron] D c=${r.idCita} diff=${r.diff_min} to=${r.to_send} act=${r.mins_since_activation}`);
-
         }
       });
     },
