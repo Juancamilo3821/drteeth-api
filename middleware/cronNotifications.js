@@ -118,6 +118,9 @@ function startCron(injectedPool) {
           } catch (e) {
             console.error(`[cron] FCM err cita=${r.idCita}:`, e?.errorInfo || e);
           }
+          // dentro del for del cron:
+          console.log(`[cron] D c=${r.idCita} diff=${r.diff_min} to=${r.to_send} act=${r.mins_since_activation}`);
+
         }
       });
     },
