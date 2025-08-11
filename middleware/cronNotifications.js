@@ -1,12 +1,12 @@
 // cronNotifications.js
 const cron = require('node-cron');
 const admin = require('../config/firebaseAdmin');
-// Se mantiene la importación del db, pero el cron usará el POOL que le pasemos
+// Se mantiene tu import original; el cron usará el pool que le pasemos
 const { db, pool } = require('../config/db');
 
 /**
- * NUEVO: exportamos una función para iniciar el cron
- * y le inyectamos el pool (si no nos pasan uno, intenta usar el importado).
+ * Exportamos una función para iniciar el cron.
+ * Si no reciben un pool, usa el importado.
  */
 function startCron(injectedPool) {
   const usePool = injectedPool || pool;
@@ -32,7 +32,7 @@ function startCron(injectedPool) {
         AND c.recordatorio_activado = 1
     `;
 
-    // Usamos SIEMPRE el POOL (no la conexión única)
+    // Usamos SIEMPRE el POOL
     usePool.query(query, async (err, results) => {
       if (err) {
         console.error(' Error en la consulta (cron):', err);
@@ -52,31 +52,24 @@ function startCron(injectedPool) {
 
         const fechaCita = new Date(fecha_hora);
         const ahora = new Date();
-        const horasAntes = (fechaCita - ahora) / (1000 * 60 * 60); // a horas
+        const horasAntes = (fechaCita - ahora) / (1000 * 60 * 60);
 
         let titulo = '';
         let cuerpo = '';
         let updateQuery = '';
         let notificacionTipo = '';
 
-        // Notificación de 3 horas
         if (horasAntes >= 2.5 && horasAntes <= 3.5 && notificado_3h === 0) {
           titulo = 'Recordatorio de cita';
           cuerpo = `Tienes una cita en 3 horas.`;
           updateQuery = `UPDATE citas SET notificado_3h = 1 WHERE idCita = ?`;
           notificacionTipo = '3h';
-        }
-
-        // Notificación de 24 horas
-        else if (horasAntes >= 23.5 && horasAntes <= 24.5 && notificado_24h === 0) {
+        } else if (horasAntes >= 23.5 && horasAntes <= 24.5 && notificado_24h === 0) {
           titulo = 'Recordatorio de cita';
           cuerpo = `Tienes una cita mañana a las ${fechaCita.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`;
           updateQuery = `UPDATE citas SET notificado_24h = 1 WHERE idCita = ?`;
           notificacionTipo = '24h';
-        }
-
-        // Notificación de prueba (3 minutos después de activar)
-        else if (recordatorio_activado_at) {
+        } else if (recordatorio_activado_at) {
           const activado = new Date(recordatorio_activado_at);
           const minutosDesdeActivacion = (ahora - activado) / (1000 * 60);
           if (minutosDesdeActivacion >= 3 && minutosDesdeActivacion < 4) {
@@ -98,7 +91,6 @@ function startCron(injectedPool) {
           await admin.messaging().send(message);
           console.log(`Notificación enviada a ${numeroDocumento}: ${titulo}`);
 
-          // Si es una notificación real, actualiza la tabla
           if (updateQuery) {
             usePool.query(updateQuery, [idCita], (err2) => {
               if (err2) {
@@ -108,7 +100,6 @@ function startCron(injectedPool) {
               }
             });
           }
-
         } catch (error) {
           console.error(`Error enviando notificación a ${numeroDocumento}:`, error);
         }
