@@ -1,5 +1,5 @@
 const admin = require('firebase-admin');
-const serviceAccount = require('./drteeth-service-account.json'); // key
+const serviceAccount = require('./drteethapp-service.json'); // key
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
