@@ -1,111 +1,128 @@
 // cronNotifications.js
 const cron = require('node-cron');
 const admin = require('../config/firebaseAdmin');
-// Se mantiene tu import original; el cron usará el pool que le pasemos
-const { db, pool } = require('../config/db');
+const { pool } = require('../config/db'); // usamos el pool (injected o el default)
 
 /**
- * Exportamos una función para iniciar el cron.
- * Si no reciben un pool, usa el importado.
+ * Inicia el cron que revisa citas y envía notificaciones.
+ * Si nos inyectan un pool externo lo usamos; si no, usamos el de config.
  */
 function startCron(injectedPool) {
   const usePool = injectedPool || pool;
 
-  // Ejecutar cada minuto (pruebas)
-  cron.schedule('* * * * *', async () => {
-    const now = new Date();
+  // Corre cada minuto en UTC (evita líos de zona horaria del contenedor)
+  cron.schedule(
+    '* * * * *',
+    async () => {
+      const query = `
+        SELECT
+          c.idCita,
+          u.numeroDocumento,
+          u.fcm_token,
+          c.fecha_hora,                           -- almacenada en UTC
+          c.recordatorio_activado,
+          c.recordatorio_activado_at,
+          c.notificado_3h,
+          c.notificado_24h,
 
-    const query = `
-      SELECT 
-        c.idCita,
-        u.numeroDocumento, 
-        u.fcm_token, 
-        c.fecha_hora, 
-        c.recordatorio_activado, 
-        c.recordatorio_activado_at,
-        c.notificado_3h,
-        c.notificado_24h
-      FROM citas c
-      JOIN usuario u ON c.Usuario_idUsuario = u.idUsuario
-      WHERE 
-        u.fcm_token IS NOT NULL 
-        AND c.recordatorio_activado = 1
-    `;
+          -- diferencia en minutos entre ahora UTC y la cita
+          TIMESTAMPDIFF(MINUTE, UTC_TIMESTAMP(), c.fecha_hora) AS diff_min,
 
-    // Usamos SIEMPRE el POOL
-    usePool.query(query, async (err, results) => {
-      if (err) {
-        console.error(' Error en la consulta (cron):', err);
-        return; // no rompas el cron
-      }
+          -- decide qué notificación toca enviar
+          CASE
+            WHEN TIMESTAMPDIFF(MINUTE, UTC_TIMESTAMP(), c.fecha_hora)
+                 BETWEEN 174 AND 186 AND c.notificado_3h = 0 THEN '3h'
+            WHEN TIMESTAMPDIFF(MINUTE, UTC_TIMESTAMP(), c.fecha_hora)
+                 BETWEEN 1434 AND 1446 AND c.notificado_24h = 0 THEN '24h'
+            ELSE NULL
+          END AS to_send,
 
-      for (const cita of results) {
-        const {
-          idCita,
-          numeroDocumento,
-          fcm_token,
-          fecha_hora,
-          recordatorio_activado_at,
-          notificado_3h,
-          notificado_24h
-        } = cita;
+          -- minutos desde que el usuario activó los recordatorios
+          TIMESTAMPDIFF(
+            MINUTE,
+            c.recordatorio_activado_at,
+            UTC_TIMESTAMP()
+          ) AS mins_since_activation,
 
-        const fechaCita = new Date(fecha_hora);
-        const ahora = new Date();
-        const horasAntes = (fechaCita - ahora) / (1000 * 60 * 60);
+          -- hora local Bogotá para mostrar en el texto
+          DATE_FORMAT(
+            CONVERT_TZ(c.fecha_hora, '+00:00', 'America/Bogota'),
+            '%H:%i'
+          ) AS hora_local_bo
+        FROM citas c
+        JOIN usuario u ON u.idUsuario = c.Usuario_idUsuario
+        WHERE
+          u.fcm_token IS NOT NULL
+          AND u.fcm_token <> ''
+          AND c.recordatorio_activado = 1
+      `;
 
-        let titulo = '';
-        let cuerpo = '';
-        let updateQuery = '';
-        let notificacionTipo = '';
-
-        if (horasAntes >= 2.5 && horasAntes <= 3.5 && notificado_3h === 0) {
-          titulo = 'Recordatorio de cita';
-          cuerpo = `Tienes una cita en 3 horas.`;
-          updateQuery = `UPDATE citas SET notificado_3h = 1 WHERE idCita = ?`;
-          notificacionTipo = '3h';
-        } else if (horasAntes >= 23.5 && horasAntes <= 24.5 && notificado_24h === 0) {
-          titulo = 'Recordatorio de cita';
-          cuerpo = `Tienes una cita mañana a las ${fechaCita.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`;
-          updateQuery = `UPDATE citas SET notificado_24h = 1 WHERE idCita = ?`;
-          notificacionTipo = '24h';
-        } else if (recordatorio_activado_at) {
-          const activado = new Date(recordatorio_activado_at);
-          const minutosDesdeActivacion = (ahora - activado) / (1000 * 60);
-          if (minutosDesdeActivacion >= 3 && minutosDesdeActivacion < 4) {
-            titulo = 'Notificaciónes Activadas';
-            cuerpo = 'Recibirás tus recordatorios 24h y 3h antes de tu cita.';
-          }
+      usePool.query(query, async (err, rows) => {
+        if (err) {
+          console.error('[cron] SQL error:', err);
+          return;
         }
 
-        if (!titulo) continue;
+        for (const r of rows) {
+          try {
+            let titulo = '';
+            let cuerpo = '';
+            let colUpdate = null;
 
-        const message = {
-          token: fcm_token,
-          notification: { title: titulo, body: cuerpo },
-          android: { priority: 'high' },
-          apns: { payload: { aps: { sound: 'default' } } }
-        };
+            // Log de diagnóstico
+            // console.log(`[cron] cita=${r.idCita} diff=${r.diff_min}min to=${r.to_send} minsAct=${r.mins_since_activation}`);
 
-        try {
-          await admin.messaging().send(message);
-          console.log(`Notificación enviada a ${numeroDocumento}: ${titulo}`);
+            if (r.to_send === '3h') {
+              titulo = 'Recordatorio de cita';
+              cuerpo = 'Tienes una cita en 3 horas.';
+              colUpdate = 'notificado_3h';
+            } else if (r.to_send === '24h') {
+              titulo = 'Recordatorio de cita';
+              cuerpo = `Tienes una cita mañana a las ${r.hora_local_bo}.`;
+              colUpdate = 'notificado_24h';
+            } else if (
+              r.mins_since_activation !== null &&
+              r.mins_since_activation >= 3 &&
+              r.mins_since_activation < 4
+            ) {
+              // Mensaje único ~3 minutos después de activar
+              titulo = 'Notificaciones activadas';
+              cuerpo = 'Recibirás tus recordatorios 24h y 3h antes de tu cita.';
+              // sin update de flags (no hay columna para esto)
+            }
 
-          if (updateQuery) {
-            usePool.query(updateQuery, [idCita], (err2) => {
-              if (err2) {
-                console.error(` Error actualizando notificado_${notificacionTipo} para cita ${idCita}:`, err2);
-              } else {
-                console.log(`Marcado como notificado_${notificacionTipo} para cita ${idCita}`);
-              }
+            if (!titulo) continue; // nada que enviar
+
+            await admin.messaging().send({
+              token: r.fcm_token,
+              notification: { title: titulo, body: cuerpo },
+              android: { priority: 'high' },
+              apns: { payload: { aps: { sound: 'default' } } }
             });
+
+            console.log(`[cron] push a ${r.numeroDocumento} (cita=${r.idCita}) → ${titulo}`);
+
+            if (colUpdate) {
+              usePool.query(
+                `UPDATE citas SET ${colUpdate} = 1 WHERE idCita = ?`,
+                [r.idCita],
+                (uerr) => {
+                  if (uerr) {
+                    console.error(`[cron] ❌ update ${colUpdate} cita=${r.idCita}:`, uerr);
+                  } else {
+                    console.log(`[cron] marcado ${colUpdate}=1 cita=${r.idCita}`);
+                  }
+                }
+              );
+            }
+          } catch (e) {
+            console.error(`[cron] FCM err cita=${r.idCita}:`, e?.errorInfo || e);
           }
-        } catch (error) {
-          console.error(`Error enviando notificación a ${numeroDocumento}:`, error);
         }
-      }
-    });
-  });
+      });
+    },
+    { timezone: 'UTC' }
+  );
 }
 
 module.exports = { startCron };
