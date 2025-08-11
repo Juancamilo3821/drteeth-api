@@ -7,7 +7,8 @@ const appointmentRoutes = require('./routes/appointmentRoutes');
 const disabilitieRoutes = require('./routes/disabilitieRoutes');
 const treatmentRoutes = require('./routes/treatmentRoutes');
 const logger = require('./middleware/logger');
-const pingRoutes = require('./routes/pingRoutes');
+const testPush = require('./routes/testPush');
+
 
 // Mantengo tu require original del cron (ya no ejecuta nada por carga)
 require('./middleware/cronNotifications');
@@ -26,7 +27,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api', appointmentRoutes); 
 app.use('/api/disabilitie', disabilitieRoutes);
 app.use('/api/treatment', treatmentRoutes);
-app.use('/ping', pingRoutes);
+app.use('/', testPush);
+
 
 // Conexión a la base de datos (tu log original se conserva)
 db.connect(err => {
