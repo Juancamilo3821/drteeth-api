@@ -5,15 +5,19 @@ const { pool } = require('../config/db');
 
 /**
  * Inicia el cron que revisa citas y envía notificaciones.
- * Si nos inyectan un pool, lo usamos; si no, usamos el de config.
  *
- * IMPORTANTE: aquí asumimos que c.fecha_hora está guardada en hora local Bogotá.
- * Convertimos a UTC SOLO para comparar y decidir la ventana.
+ * Supuestos:
+ * - c.fecha_hora está guardada en hora local Bogotá (America/Bogota).
+ * - Comparamos siempre contra UTC en el cron para evitar líos de TZ del contenedor,
+ *   convirtiendo c.fecha_hora -> UTC con CONVERT_TZ(..., 'America/Bogota', '+00:00').
+ *
+ * Cambio clave:
+ * - Enviar 24h/3h SOLO en el minuto exacto (ventana de 1 min), no con rangos amplios.
  */
 function startCron(injectedPool) {
   const usePool = injectedPool || pool;
 
-  // Corre cada minuto con base UTC (evita líos de TZ del contenedor)
+  // Corre cada minuto con base UTC
   cron.schedule(
     '* * * * *',
     async () => {
@@ -23,10 +27,10 @@ function startCron(injectedPool) {
           u.numeroDocumento,
           u.fcm_token,
 
-          -- Fecha/hora guardada (asumimos America/Bogota)
+          -- Fecha/hora original (local Bogotá)
           c.fecha_hora AS fecha_local_bo,
 
-          -- Misma cita convertida a UTC para comparar contra UTC_TIMESTAMP()
+          -- Misma cita en UTC para comparar
           CONVERT_TZ(c.fecha_hora, 'America/Bogota', '+00:00') AS fecha_utc,
 
           c.recordatorio_activado,
@@ -41,22 +45,22 @@ function startCron(injectedPool) {
             CONVERT_TZ(c.fecha_hora, 'America/Bogota', '+00:00')
           ) AS diff_min,
 
-          -- decide qué notificación toca enviar (ventanas un poco amplias)
+          -- EXACTO por minuto: 3h y 24h (ventana [t, t+1min) desde ahora)
           CASE
-            WHEN TIMESTAMPDIFF(
-                   MINUTE, UTC_TIMESTAMP(),
-                   CONVERT_TZ(c.fecha_hora, 'America/Bogota', '+00:00')
-                 ) BETWEEN 170 AND 190
-                 AND c.notificado_3h = 0 THEN '3h'
-            WHEN TIMESTAMPDIFF(
-                   MINUTE, UTC_TIMESTAMP(),
-                   CONVERT_TZ(c.fecha_hora, 'America/Bogota', '+00:00')
-                 ) BETWEEN 1410 AND 1470
-                 AND c.notificado_24h = 0 THEN '24h'
+            WHEN c.notificado_3h = 0
+             AND CONVERT_TZ(c.fecha_hora, 'America/Bogota', '+00:00') >= DATE_ADD(UTC_TIMESTAMP(), INTERVAL 3 HOUR)
+             AND CONVERT_TZ(c.fecha_hora, 'America/Bogota', '+00:00') <  DATE_ADD(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 3 HOUR), INTERVAL 1 MINUTE)
+              THEN '3h'
+            WHEN c.notificado_24h = 0
+             AND CONVERT_TZ(c.fecha_hora, 'America/Bogota', '+00:00') >= DATE_ADD(UTC_TIMESTAMP(), INTERVAL 24 HOUR)
+             AND CONVERT_TZ(c.fecha_hora, 'America/Bogota', '+00:00') <  DATE_ADD(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 24 HOUR), INTERVAL 1 MINUTE)
+              THEN '24h'
             ELSE NULL
           END AS to_send,
 
           -- minutos desde que el usuario activó los recordatorios
+          -- (si recordatorio_activado_at está en UTC, esto es exacto; si está en Bogotá,
+          --  el desfase será de ~5h, pero solo afecta al aviso "activadas")
           TIMESTAMPDIFF(
             MINUTE,
             c.recordatorio_activado_at,
@@ -85,7 +89,7 @@ function startCron(injectedPool) {
             let cuerpo = '';
             let colUpdate = null;
 
-            // Diagnóstico fino (déjalo activo mientras pruebes)
+            // Diagnóstico (útil para probar)
             console.log(
               `[cron] D c=${r.idCita} diff=${r.diff_min} to=${r.to_send} act=${r.mins_since_activation} local=${r.fecha_local_bo}`
             );
@@ -124,27 +128,19 @@ function startCron(injectedPool) {
 
             if (colUpdate) {
               usePool.query(
-                `UPDATE citas SET ${colUpdate} = 1 WHERE idCita = ?`,
+                `UPDATE citas SET ${colUpdate} = 1 WHERE idCita = ? AND ${colUpdate} = 0`,
                 [r.idCita],
                 (uerr) => {
                   if (uerr) {
-                    console.error(
-                      `[cron] ❌ update ${colUpdate} cita=${r.idCita}:`,
-                      uerr
-                    );
+                    console.error(`[cron] ❌ update ${colUpdate} cita=${r.idCita}:`, uerr);
                   } else {
-                    console.log(
-                      `[cron] marcado ${colUpdate}=1 cita=${r.idCita}`
-                    );
+                    console.log(`[cron] marcado ${colUpdate}=1 cita=${r.idCita}`);
                   }
                 }
               );
             }
           } catch (e) {
-            console.error(
-              `[cron] FCM err cita=${r.idCita}:`,
-              e?.errorInfo || e
-            );
+            console.error(`[cron] FCM err cita=${r.idCita}:`, e?.errorInfo || e);
           }
         }
       });
