@@ -4,15 +4,14 @@ const admin = require('../config/firebaseAdmin');
 const { pool } = require('../config/db');
 
 /**
- * Inicia el cron que revisa citas y envía notificaciones.
+ * Inicia el cron que revisa citas y envía notificaciones push.
  *
  * Supuestos:
- * - c.fecha_hora está guardada en hora local Bogotá (America/Bogota).
- * - Comparamos siempre contra UTC en el cron para evitar líos de TZ del contenedor,
- *   convirtiendo c.fecha_hora -> UTC con CONVERT_TZ(..., 'America/Bogota', '+00:00').
- *
- * Cambio clave:
- * - Enviar 24h/3h SOLO en el minuto exacto (ventana de 1 min), no con rangos amplios.
+ * - c.fecha_hora está guardada en hora local Bogotá (UTC-05) sin DST.
+ * - Evitamos CONVERT_TZ (que requiere tablas tz) y llevamos a UTC sumando 5 horas:
+ *     fecha_utc = DATE_ADD(c.fecha_hora, INTERVAL 5 HOUR)
+ * - Comparamos contra UTC_TIMESTAMP() y disparamos en ventanas exactas de 1 minuto.
+ * - El canal de Android 'citas' DEBE existir en la app (Android 8+).
  */
 function startCron(injectedPool) {
   const usePool = injectedPool || pool;
@@ -27,47 +26,41 @@ function startCron(injectedPool) {
           u.numeroDocumento,
           u.fcm_token,
 
-          -- Fecha/hora original (local Bogotá)
+          -- Hora guardada (local Bogotá)
           c.fecha_hora AS fecha_local_bo,
 
-          -- Misma cita en UTC para comparar
-          CONVERT_TZ(c.fecha_hora, 'America/Bogota', '+00:00') AS fecha_utc,
+          -- Misma cita llevada a UTC (Bogotá -05:00, sin DST)
+          DATE_ADD(c.fecha_hora, INTERVAL 5 HOUR) AS fecha_utc,
 
           c.recordatorio_activado,
           c.recordatorio_activado_at,
           c.notificado_3h,
           c.notificado_24h,
 
-          -- diferencia en minutos entre AHORA (UTC) y la cita (ya en UTC)
+          -- Diferencia en MINUTOS entre ahora (UTC) y la cita (ya en UTC)
           TIMESTAMPDIFF(
             MINUTE,
             UTC_TIMESTAMP(),
-            CONVERT_TZ(c.fecha_hora, 'America/Bogota', '+00:00')
+            DATE_ADD(c.fecha_hora, INTERVAL 5 HOUR)
           ) AS diff_min,
 
-          -- EXACTO por minuto: 3h y 24h (ventana [t, t+1min) desde ahora)
+          -- EXACTO por minuto: ventanas [3h,3h+1min) y [24h,24h+1min)
           CASE
             WHEN c.notificado_3h = 0
-             AND CONVERT_TZ(c.fecha_hora, 'America/Bogota', '+00:00') >= DATE_ADD(UTC_TIMESTAMP(), INTERVAL 3 HOUR)
-             AND CONVERT_TZ(c.fecha_hora, 'America/Bogota', '+00:00') <  DATE_ADD(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 3 HOUR), INTERVAL 1 MINUTE)
+             AND DATE_ADD(c.fecha_hora, INTERVAL 5 HOUR) >= DATE_ADD(UTC_TIMESTAMP(), INTERVAL 3 HOUR)
+             AND DATE_ADD(c.fecha_hora, INTERVAL 5 HOUR) <  DATE_ADD(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 3 HOUR), INTERVAL 1 MINUTE)
               THEN '3h'
             WHEN c.notificado_24h = 0
-             AND CONVERT_TZ(c.fecha_hora, 'America/Bogota', '+00:00') >= DATE_ADD(UTC_TIMESTAMP(), INTERVAL 24 HOUR)
-             AND CONVERT_TZ(c.fecha_hora, 'America/Bogota', '+00:00') <  DATE_ADD(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 24 HOUR), INTERVAL 1 MINUTE)
+             AND DATE_ADD(c.fecha_hora, INTERVAL 5 HOUR) >= DATE_ADD(UTC_TIMESTAMP(), INTERVAL 24 HOUR)
+             AND DATE_ADD(c.fecha_hora, INTERVAL 5 HOUR) <  DATE_ADD(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 24 HOUR), INTERVAL 1 MINUTE)
               THEN '24h'
             ELSE NULL
           END AS to_send,
 
-          -- minutos desde que el usuario activó los recordatorios
-          -- (si recordatorio_activado_at está en UTC, esto es exacto; si está en Bogotá,
-          --  el desfase será de ~5h, pero solo afecta al aviso "activadas")
-          TIMESTAMPDIFF(
-            MINUTE,
-            c.recordatorio_activado_at,
-            UTC_TIMESTAMP()
-          ) AS mins_since_activation,
+          -- Mins desde que activó recordatorios (para mensaje informativo)
+          TIMESTAMPDIFF(MINUTE, c.recordatorio_activado_at, UTC_TIMESTAMP()) AS mins_since_activation,
 
-          -- hora para mostrar en el cuerpo (local Bogotá)
+          -- Hora local para cuerpo del mensaje (tal como está guardada)
           DATE_FORMAT(c.fecha_hora, '%H:%i') AS hora_local_bo
         FROM citas c
         JOIN usuario u ON u.idUsuario = c.Usuario_idUsuario
@@ -83,15 +76,19 @@ function startCron(injectedPool) {
           return;
         }
 
+        // Reloj de referencia (UTC)
+        const nowUtc = new Date().toISOString();
+        console.log(`[cron] now(UTC)=${nowUtc} rows=${rows.length}`);
+
         for (const r of rows) {
           try {
             let titulo = '';
             let cuerpo = '';
             let colUpdate = null;
 
-            // Diagnóstico (útil para probar)
+            // Diagnóstico
             console.log(
-              `[cron] D c=${r.idCita} diff=${r.diff_min} to=${r.to_send} act=${r.mins_since_activation} local=${r.fecha_local_bo}`
+              `[cron] D c=${r.idCita} diff=${r.diff_min} to=${r.to_send} act=${r.mins_since_activation} fecha_utc=${r.fecha_utc}`
             );
 
             if (r.to_send === '3h') {
@@ -107,19 +104,23 @@ function startCron(injectedPool) {
               r.mins_since_activation >= 3 &&
               r.mins_since_activation < 4
             ) {
-              // Mensaje único ~3 minutos después de activar
+              // Aviso único ~3 min después de activar
               titulo = 'Notificaciones activadas';
               cuerpo = 'Recibirás tus recordatorios 24h y 3h antes de tu cita.';
-              // sin update de flags (no hay columna para esto)
+              // sin update de flags
             }
 
-            if (!titulo) continue; // nada que enviar
+            if (!titulo) continue;
 
+            // IMPORTANTE: el canal 'citas' debe existir en la app (Android 8+)
             await admin.messaging().send({
               token: r.fcm_token,
               notification: { title: titulo, body: cuerpo },
-              android: { priority: 'high' },
-              apns: { payload: { aps: { sound: 'default' } } }
+              android: {
+                priority: 'high',
+                notification: { channelId: 'citas' },
+              },
+              apns: { payload: { aps: { sound: 'default' } } },
             });
 
             console.log(
