@@ -54,7 +54,6 @@ exports.register = async (req, res) => {
         );
 
       } else {
-        // 3. No existe: hacer INSERT
         const insertQuery = `
           INSERT INTO usuario (
             nombre, apellidos, correo, telefono, password, tipoDocumento, numeroDocumento
