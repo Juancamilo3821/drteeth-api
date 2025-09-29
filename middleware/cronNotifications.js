@@ -102,7 +102,6 @@ function startCron(injectedPool) {
 
             if (!titulo) continue;
 
-            // IMPORTANTE: el canal 'citas' debe existir en la app (Android 8+)
             await admin.messaging().send({
               token: r.fcm_token,
               notification: { title: titulo, body: cuerpo },
