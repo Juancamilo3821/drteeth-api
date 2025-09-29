@@ -113,7 +113,7 @@ function startCron(injectedPool) {
             });
 
             console.log(
-              `[cron] ✅ push a ${r.numeroDocumento} (cita=${r.idCita}) → ${titulo}`
+              `[cron] push a ${r.numeroDocumento} (cita=${r.idCita}) → ${titulo}`
             );
 
             if (colUpdate) {
@@ -122,7 +122,7 @@ function startCron(injectedPool) {
                 [r.idCita],
                 (uerr) => {
                   if (uerr) {
-                    console.error(`[cron] ❌ update ${colUpdate} cita=${r.idCita}:`, uerr);
+                    console.error(`[cron] update ${colUpdate} cita=${r.idCita}:`, uerr);
                   } else {
                     console.log(`[cron] marcado ${colUpdate}=1 cita=${r.idCita}`);
                   }
