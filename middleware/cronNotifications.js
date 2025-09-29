@@ -3,16 +3,6 @@ const cron = require('node-cron');
 const admin = require('../config/firebaseAdmin');
 const { pool } = require('../config/db');
 
-/**
- * Inicia el cron que revisa citas y envía notificaciones push.
- *
- * Supuestos:
- * - c.fecha_hora está guardada en hora local Bogotá (UTC-05) sin DST.
- * - Evitamos CONVERT_TZ (que requiere tablas tz) y llevamos a UTC sumando 5 horas:
- *     fecha_utc = DATE_ADD(c.fecha_hora, INTERVAL 5 HOUR)
- * - Comparamos contra UTC_TIMESTAMP() y disparamos en ventanas exactas de 1 minuto.
- * - El canal de Android 'citas' DEBE existir en la app (Android 8+).
- */
 function startCron(injectedPool) {
   const usePool = injectedPool || pool;
 
